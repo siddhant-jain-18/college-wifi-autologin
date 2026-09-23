@@ -1,2 +1,7 @@
-playwright==1.63.0
-platformdirs==4.3.6
+# Runtime dependencies for college-wifi-autologin.
+#
+# Ranges rather than exact pins: platformdirs and playwright both ship
+# frequently, and a hard pin to a version that predates your Python release
+# is the classic way this kind of tool stops installing.
+playwright>=1.40,<2
+platformdirs>=4.2,<5

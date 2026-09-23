@@ -1,29 +1,69 @@
 #!/bin/bash
 # NetworkManager dispatcher hook.
-# Runs the login script when we join a WiFi network.
 #
-# Installed to /etc/NetworkManager/dispatcher.d/90-college-wifi-login (mode 0700 root).
+# Runs the login script when we join a WiFi network, so the first login
+# happens immediately instead of up to 5 minutes later.
+#
+# Installed to /etc/NetworkManager/dispatcher.d/90-college-wifi-login
+# (owner root, mode 0700).  NetworkManager invokes this as root; the actual
+# login script is always executed as the desktop user, never as root.
 
-INTERFACE="$1"
-ACTION="$2"
+INTERFACE="${1:-}"
+ACTION="${2:-}"
 
-if [[ "$INTERFACE" != wl* ]]; then
-    exit 0
-fi
+# Only care about wireless interfaces (wlan0, wlp3s0, wlP2p33s0, ...).
+case "$INTERFACE" in
+    wl*|wlan*|wifi*) ;;
+    *) exit 0 ;;
+esac
 
 USERNAME="@USER@"
+HOME_DIR="@HOME@"
 PYTHON="@PYTHON@"
 LOGIN_SCRIPT="@LOGIN_SCRIPT@"
 
-if [[ ! -x "$PYTHON" ]] || [[ ! -f "$LOGIN_SCRIPT" ]]; then
-    exit 0
+[ -x "$PYTHON" ] || exit 0
+[ -f "$LOGIN_SCRIPT" ] || exit 0
+
+RUN=0
+case "$ACTION" in
+    up|dhcp4-change|dhcp6-change|reapply)
+        RUN=1
+        ;;
+    connectivity-change)
+        # CONNECTIVITY_STATE is only set for this action.
+        if [ "${CONNECTIVITY_STATE:-}" = "PORTAL" ]; then
+            RUN=1
+        fi
+        ;;
+esac
+[ "$RUN" = 1 ] || exit 0
+
+# runuser (util-linux) is what lets us drop from root to the desktop user.
+# Without it we simply skip; the 5-minute timer still covers this case.
+command -v runuser >/dev/null 2>&1 || exit 0
+
+UID_TARGET="$(id -u "$USERNAME" 2>/dev/null || echo "")"
+RUNTIME_DIR=""
+if [ -n "$UID_TARGET" ] && [ -d "/run/user/$UID_TARGET" ]; then
+    RUNTIME_DIR="/run/user/$UID_TARGET"
 fi
 
-# Fire on network changes that might indicate a captive portal.
-if [[ "$ACTION" == "connectivity-change" && "$CONNECTIVITY_STATE" == "PORTAL" ]] \
-|| [[ "$ACTION" == "up" || "$ACTION" == "dhcp4-change" ]]; then
-    # Run as the target user with the correct HOME so platformdirs finds
-    # the credentials file.
-    runuser -u "$USERNAME" -- env HOME="/home/$USERNAME" \
-        "$PYTHON" "$LOGIN_SCRIPT" >/dev/null 2>&1 &
-fi
+# Run detached: NetworkManager must not wait for a browser, and the process
+# must survive the dispatcher script exiting.  setsid gives it its own
+# session so NM's process-group cleanup cannot reap it.  A short sleep lets
+# the captive-portal redirect settle first.
+(
+    sleep 3
+    if command -v setsid >/dev/null 2>&1; then
+        exec setsid runuser -u "$USERNAME" -- \
+            env HOME="$HOME_DIR" ${RUNTIME_DIR:+XDG_RUNTIME_DIR="$RUNTIME_DIR"} \
+            "$PYTHON" "$LOGIN_SCRIPT"
+    else
+        exec runuser -u "$USERNAME" -- \
+            env HOME="$HOME_DIR" ${RUNTIME_DIR:+XDG_RUNTIME_DIR="$RUNTIME_DIR"} \
+            "$PYTHON" "$LOGIN_SCRIPT"
+    fi
+) </dev/null >/dev/null 2>&1 &
+
+exit 0

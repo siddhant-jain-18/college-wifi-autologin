@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (${{ matrix.os }} / py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.9", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Byte-compile everything
+        run: |
+          python -m py_compile install.py uninstall.py bin/college_wifi_common.py bin/college-wifi-login.py bin/college-wifi-doctor.py
+
+      # Only the package, not the ~150 MB browser: the CLI tests import
+      # playwright but never launch it.  If this fails the browser-dependent
+      # tests simply skip, they do not fail the build.
+      - name: Install runtime deps for CLI tests
+        run: python -m pip install --quiet -r requirements.txt
+        continue-on-error: true
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t . -v
+
+  installer-smoke:
+    name: installer smoke test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      COLLEGE_WIFI_USER: ci-user@example.edu
+      COLLEGE_WIFI_PASS: "ci-pa'ss\\word"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No venv packages, no Chromium download, no scheduler: this exercises
+      # path resolution, credential writing, script copying and uninstall.
+      - name: Install (files only)
+        shell: bash
+        run: |
+          set -eux
+          export COLLEGE_WIFI_CONFIG_FILE="$RUNNER_TEMP/cwa/wifi-login.env"
+          python install.py --unattended --skip-deps --skip-playwright \
+              --no-trigger --no-smoke-test --install-dir "$RUNNER_TEMP/cwa-data"
+
+      - name: Credentials round-trip through the parser
+        shell: bash
+        run: |
+          set -eux
+          export COLLEGE_WIFI_CONFIG_FILE="$RUNNER_TEMP/cwa/wifi-login.env"
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "bin")
+          from college_wifi_common import parse_env_file
+          env = parse_env_file(Path(__import__("os").environ["COLLEGE_WIFI_CONFIG_FILE"]))
+          assert env["COLLEGE_WIFI_USER"] == "ci-user@example.edu", env
+          assert env["COLLEGE_WIFI_PASS"] == "ci-pa'ss\\word", env
+          print("credentials round-trip OK")
+          PY
+
+      - name: Uninstall
+        shell: bash
+        run: |
+          set -eux
+          python uninstall.py --purge --install-dir "$RUNNER_TEMP/cwa-data"
+          test ! -e "$RUNNER_TEMP/cwa-data"
+          test ! -e "$RUNNER_TEMP/cwa/wifi-login.env"
