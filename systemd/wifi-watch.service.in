@@ -1,0 +1,7 @@
+# wifi-watch.service.in
+[Unit]
+Description=Check college WiFi portal and re-login if needed
+
+[Service]
+Type=oneshot
+ExecStart=@INSTALL_DIR@/college-wifi-trigger.sh

@@ -1,0 +1,14 @@
+#!/bin/bash
+INTERFACE="$1"
+ACTION="$2"
+
+if [[ "$INTERFACE" == wl* ]]; then
+    USERNAME="@USER@"
+    WRAPPER="@INSTALL_DIR@/college-wifi-trigger.sh"
+
+    if [[ "$ACTION" == "connectivity-change" && "$CONNECTIVITY_STATE" == "PORTAL" ]] \
+    || [[ "$ACTION" == "up" || "$ACTION" == "dhcp4-change" ]]; then
+        [ -x "$WRAPPER" ] && \
+            runuser -u "$USERNAME" -- env HOME="/home/$USERNAME" "$WRAPPER" &
+    fi
+fi

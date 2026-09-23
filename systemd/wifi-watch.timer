@@ -1,0 +1,12 @@
+# wifi-watch.timer
+[Unit]
+Description=Run WiFi portal check every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*:0/5
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
