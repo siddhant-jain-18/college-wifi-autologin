@@ -43,7 +43,7 @@ gap.
 ### Linux
 
 ```bash
-git clone https://github.com/<you>/college-wifi-autologin.git
+git clone https://github.com/siddhant-jain-18/college-wifi-autologin.git
 cd college-wifi-autologin
 python3 install.py
 ```
@@ -64,7 +64,7 @@ the WiFi.
 ### macOS
 
 ```bash
-git clone https://github.com/<you>/college-wifi-autologin.git
+git clone https://github.com/siddhant-jain-18/college-wifi-autologin.git
 cd college-wifi-autologin
 python3 install.py
 ```
@@ -78,7 +78,7 @@ launchd LaunchAgent that fires every 5 minutes.
 Open PowerShell (no admin needed):
 
 ```powershell
-git clone https://github.com/<you>/college-wifi-autologin.git
+git clone https://github.com/siddhant-jain-18/college-wifi-autologin.git
 cd college-wifi-autologin
 python install.py
 ```
