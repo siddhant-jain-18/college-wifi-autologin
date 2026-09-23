@@ -1,0 +1,29 @@
+#!/bin/bash
+# NetworkManager dispatcher hook.
+# Runs the login script when we join a WiFi network.
+#
+# Installed to /etc/NetworkManager/dispatcher.d/90-college-wifi-login (mode 0700 root).
+
+INTERFACE="$1"
+ACTION="$2"
+
+if [[ "$INTERFACE" != wl* ]]; then
+    exit 0
+fi
+
+USERNAME="@USER@"
+PYTHON="@PYTHON@"
+LOGIN_SCRIPT="@LOGIN_SCRIPT@"
+
+if [[ ! -x "$PYTHON" ]] || [[ ! -f "$LOGIN_SCRIPT" ]]; then
+    exit 0
+fi
+
+# Fire on network changes that might indicate a captive portal.
+if [[ "$ACTION" == "connectivity-change" && "$CONNECTIVITY_STATE" == "PORTAL" ]] \
+|| [[ "$ACTION" == "up" || "$ACTION" == "dhcp4-change" ]]; then
+    # Run as the target user with the correct HOME so platformdirs finds
+    # the credentials file.
+    runuser -u "$USERNAME" -- env HOME="/home/$USERNAME" \
+        "$PYTHON" "$LOGIN_SCRIPT" >/dev/null 2>&1 &
+fi
