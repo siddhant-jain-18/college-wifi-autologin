@@ -534,15 +534,10 @@ def rotate_log(log_file: Path, max_bytes: int = LOG_MAX_BYTES,
 def setup_logging(log_file: Path, verbose: bool = False,
                   quiet: bool = False) -> logging.Logger:
     """Return the shared logger, writing to a rotating file and stdout."""
-    rotate_log(log_file)
-    try:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        print(f"warning: cannot create log directory {log_file.parent}: {exc}",
-              file=sys.stderr)
-
     logger = logging.getLogger("college-wifi")
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    # Release existing handles BEFORE rotating: Windows cannot rename a file
+    # that is still open in this process, so rotating first would silently fail.
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
         try:
@@ -550,6 +545,13 @@ def setup_logging(log_file: Path, verbose: bool = False,
         except Exception:
             pass
     logger.propagate = False
+
+    rotate_log(log_file)
+    try:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"warning: cannot create log directory {log_file.parent}: {exc}",
+              file=sys.stderr)
 
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(message)s",

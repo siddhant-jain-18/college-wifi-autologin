@@ -74,6 +74,9 @@ jobs:
         shell: bash
         run: |
           set -eux
+          # Env vars do not persist across steps: without this the uninstaller
+          # purges the default platform config dir instead of $RUNNER_TEMP/cwa.
+          export COLLEGE_WIFI_CONFIG_FILE="$RUNNER_TEMP/cwa/wifi-login.env"
           python uninstall.py --purge --install-dir "$RUNNER_TEMP/cwa-data"
           test ! -e "$RUNNER_TEMP/cwa-data"
           test ! -e "$RUNNER_TEMP/cwa/wifi-login.env"

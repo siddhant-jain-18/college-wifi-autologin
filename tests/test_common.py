@@ -32,6 +32,12 @@ class TempDirTestCase(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
 
     def tearDown(self) -> None:
+        # Release log file handles before deleting the temp dir: on Windows an
+        # open FileHandler keeps the file locked (WinError 32) and cleanup fails.
+        logger = logging.getLogger("college-wifi")
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+            handler.close()
         self._tmp.cleanup()
 
 
@@ -402,8 +408,11 @@ class TestLogging(TempDirTestCase):
 
         logger = cwc.setup_logging(log_file, quiet=True)
         logger.info("hello world")
+        # Close the handlers before rotating: Windows refuses to rename a file
+        # that is still open by this process (unlike POSIX).
         for handler in logger.handlers:
             handler.flush()
+            handler.close()
         self.assertIn("hello world", log_file.read_text(encoding="utf-8"))
 
         # Force rotation by making the file larger than the threshold.
