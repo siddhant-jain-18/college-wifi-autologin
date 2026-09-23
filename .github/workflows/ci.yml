@@ -43,7 +43,7 @@ jobs:
       # Installer smoke test: no venv packages, no Chromium download, no
       # scheduler: this exercises path resolution, credential writing,
       # script copying and uninstall.
-      - name: Installer smoke: install (files only)
+      - name: "Installer smoke: install (files only)"
         shell: bash
         env:
           COLLEGE_WIFI_USER: ci-user@example.edu
@@ -54,7 +54,7 @@ jobs:
           python install.py --unattended --skip-deps --skip-playwright \
               --no-trigger --no-smoke-test --install-dir "$RUNNER_TEMP/cwa-data"
 
-      - name: Installer smoke: credentials round-trip through the parser
+      - name: "Installer smoke: credentials round-trip through the parser"
         shell: bash
         run: |
           set -eux
@@ -70,7 +70,7 @@ jobs:
           print("credentials round-trip OK")
           PY
 
-      - name: Installer smoke: uninstall
+      - name: "Installer smoke: uninstall"
         shell: bash
         run: |
           set -eux
