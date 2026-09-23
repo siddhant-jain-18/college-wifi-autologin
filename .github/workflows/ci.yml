@@ -40,36 +40,21 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
 
-  installer-smoke:
-    name: installer smoke test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    env:
-      COLLEGE_WIFI_USER: ci-user@example.edu
-      COLLEGE_WIFI_PASS: "ci-pa'ss\\word"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      # No venv packages, no Chromium download, no scheduler: this exercises
-      # path resolution, credential writing, script copying and uninstall.
-      - name: Install (files only)
+      # Installer smoke test: no venv packages, no Chromium download, no
+      # scheduler: this exercises path resolution, credential writing,
+      # script copying and uninstall.
+      - name: Installer smoke: install (files only)
         shell: bash
+        env:
+          COLLEGE_WIFI_USER: ci-user@example.edu
+          COLLEGE_WIFI_PASS: "ci-pa'ss\\word"
         run: |
           set -eux
           export COLLEGE_WIFI_CONFIG_FILE="$RUNNER_TEMP/cwa/wifi-login.env"
           python install.py --unattended --skip-deps --skip-playwright \
               --no-trigger --no-smoke-test --install-dir "$RUNNER_TEMP/cwa-data"
 
-      - name: Credentials round-trip through the parser
+      - name: Installer smoke: credentials round-trip through the parser
         shell: bash
         run: |
           set -eux
@@ -85,7 +70,7 @@ jobs:
           print("credentials round-trip OK")
           PY
 
-      - name: Uninstall
+      - name: Installer smoke: uninstall
         shell: bash
         run: |
           set -eux
