@@ -459,7 +459,8 @@ def dry_run(settings: Settings) -> int:
              "yes" if have_internet(settings.connectivity_timeout)
              else "no / captive portal")
     LOG.info("portal reachable: %s",
-             "yes" if portal_reachable(settings.portal_url) else "no")
+             "yes" if portal_reachable(settings.portal_url,
+                                        timeout=settings.portal_timeout) else "no")
 
     try:
         from playwright.sync_api import sync_playwright  # noqa: F401
@@ -544,7 +545,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             return EXIT_OK
 
         # Avoid spawning a browser when there is clearly nothing to talk to.
-        if not portal_reachable(settings.portal_url):
+        if not portal_reachable(settings.portal_url,
+                    timeout=settings.portal_timeout):
             LOG.error("no internet and the portal is not reachable: %s",
                       settings.portal_url)
             LOG.error("(use --skip-internet-check to try anyway)")

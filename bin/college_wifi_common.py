@@ -50,6 +50,7 @@ DEFAULT_RETRY_BACKOFF = 5          # seconds between attempts
 DEFAULT_POST_SUBMIT_TIMEOUT = 25   # seconds to wait for the success page
 DEFAULT_RSA_TIMEOUT = 15           # seconds to wait for cpRSAobj
 DEFAULT_CONNECTIVITY_TIMEOUT = 5.0
+DEFAULT_PORTAL_TIMEOUT = 30.0       # seconds to wait for the portal to answer
 
 LOG_MAX_BYTES = 1024 * 1024
 LOG_BACKUPS = 1
@@ -402,6 +403,7 @@ class Settings:
     screenshot_dir: Path
     lock_file: Path
     env_file: Path
+    portal_timeout: float = DEFAULT_PORTAL_TIMEOUT
     skip_internet_check: bool = False
     block_resources: bool = True
     user_selectors: tuple[str, ...] = field(default_factory=lambda: USERNAME_SELECTORS)
@@ -493,6 +495,9 @@ def load_settings(
                                  default_screenshot_dir()),
         lock_file=pick_path("lock_file", "WIFI_LOGIN_LOCK_FILE", default_lock_file()),
         env_file=env_file,
+        portal_timeout=coerce_float(
+            resolved_raw("portal_timeout", "WIFI_LOGIN_PORTAL_TIMEOUT"),
+            DEFAULT_PORTAL_TIMEOUT, minimum=5.0),
         skip_internet_check=bool(overrides.get("skip_internet_check", False)),
         block_resources=(
             coerce_bool(str(overrides["block_resources"]), True)

@@ -205,6 +205,7 @@ class TestSettings(unittest.TestCase):
         settings = cwc.load_settings(self._dir / "missing.env")
         self.assertEqual(settings.portal_url, cwc.DEFAULT_PORTAL_URL)
         self.assertEqual(settings.step_timeout, cwc.DEFAULT_STEP_TIMEOUT)
+        self.assertEqual(settings.portal_timeout, cwc.DEFAULT_PORTAL_TIMEOUT)
         self.assertEqual(settings.max_attempts, cwc.DEFAULT_MAX_ATTEMPTS)
         self.assertTrue(settings.headless)
         self.assertTrue(settings.block_resources)
@@ -217,12 +218,14 @@ class TestSettings(unittest.TestCase):
             "export COLLEGE_WIFI_USER='alice'\n"
             "export COLLEGE_WIFI_PASS='s3cret'\n"
             "export WIFI_LOGIN_TIMEOUT='99'\n"
+            "export WIFI_LOGIN_PORTAL_TIMEOUT='45.5'\n"
             "export WIFI_LOGIN_HEADLESS='0'\n"
         )
         settings = cwc.load_settings(env)
         self.assertEqual(settings.username, "alice")
         self.assertEqual(settings.password, "s3cret")
         self.assertEqual(settings.step_timeout, 99)
+        self.assertEqual(settings.portal_timeout, 45.5)
         self.assertFalse(settings.headless)
         self.assertTrue(settings.has_credentials)
 
