@@ -102,8 +102,10 @@ credentials and logs; only `--purge` removes them.
 - **No `cpRSAobj`?** Set `WIFI_LOGIN_RSA_TIMEOUT='0'` to skip the RSA wait.
   The form fill works unchanged for plain-text submissions.
 - **No `oAuthentication.submitActiveForm`?** The submit ladder already handles
-  `<input type=submit>`, `<button>`, `<a class=button>` and the Enter key. Add
-  a selector via `WIFI_LOGIN_SUBMIT_SELECTOR` if yours is different.
+  the AJAX containers (`#usercheck_ok_div`, `#LoginSequencePage_Content`),
+  `<input type=submit>`, `<button>`, `<a class=button>`, a JS
+  `form.requestSubmit()/submit()` and the Enter key. Add a selector via
+  `WIFI_LOGIN_SUBMIT_SELECTOR` if yours is different.
 - **Multi-page login (username → next → password)?** Not supported yet. Split
   `login_once()` into stages. Open an issue if you build this — it is a common
   portal pattern.

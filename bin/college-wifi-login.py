@@ -76,6 +76,18 @@ except ImportError:
 
 BLOCKED_RESOURCE_TYPES = {"image", "font", "media"}
 
+#: Logout controls that only exist on the post-login page.  Kept in one place
+#: so is_logged_in() and _await_result() agree.
+LOGOUT_SELECTORS: tuple[str, ...] = (
+    'text="Log Out"',
+    'text="Logout"',
+    'input[value*="Log Out" i]',
+    'button:has-text("Log Out")',
+    'button:has-text("Logout")',
+    'a:has-text("Log Out")',
+    'a:has-text("Logout")',
+)
+
 
 # ---------------------------------------------------------------------------
 # Page helpers
@@ -126,19 +138,49 @@ def is_logged_in(page: Page, settings: Settings) -> bool:
                        for sel in settings.user_selectors)
         has_logout = any(
             page.locator(sel).count() > 0
-            for sel in (
-                'text="Log Out"',
-                'text="Logout"',
-                'input[value*="Log Out" i]',
-                'button:has-text("Log Out")',
-                'button:has-text("Logout")',
-                'a:has-text("Log Out")',
-                'a:has-text("Logout")',
-            )
+            for sel in LOGOUT_SELECTORS
         )
         return (not has_form) and has_logout
     except Exception:
         return False
+
+
+def describe_page(page: Page) -> str:
+    """One-line summary of the portal state, for logs and debugging.
+
+    Never raises: every probe is guarded because this runs on failure paths
+    where the page may already be half-dead.
+    """
+    bits: list[str] = []
+    try:
+        bits.append(f"url={page.url!r}")
+    except Exception:
+        pass
+    try:
+        bits.append(f"title={page.title()!r}")
+    except Exception:
+        pass
+    for name, script in (
+        ("oAuth", "typeof oAuthentication !== 'undefined'"),
+        ("submitFn", "typeof oAuthentication !== 'undefined' "
+                     "&& typeof oAuthentication.submitActiveForm === 'function'"),
+        ("rsaReady", "!!(window.cpRSAobj && cpRSAobj.isReadyToEncrypt "
+                     "&& cpRSAobj.isReadyToEncrypt())"),
+        ("rsaAuth", "!!(window.cpRSAobj && cpRSAobj.isAuthenticated)"),
+    ):
+        try:
+            bits.append(f"{name}={bool(page.evaluate(f'() => {script}'))}")
+        except Exception:
+            bits.append(f"{name}=?")
+    for name, sels in (("user", ("input[type='text'], input:not([type])")),
+                       ("pass", ("input[type='password']",)),
+                       ("btn", ("button, input[type='submit'], input[type='button']",))):
+        try:
+            counts = [page.locator(sel).count() for sel in sels]
+            bits.append(f"{name}={counts}")
+        except Exception:
+            bits.append(f"{name}=?")
+    return " ".join(bits)
 
 
 def screenshot(page: Page, settings: Settings, name: str) -> None:
@@ -156,7 +198,8 @@ def fill_field(page: Page, selector: str, value: str) -> bool:
 
     ``fill`` is instant but only fires an ``input`` event; some portals only
     enable their submit button on real keystrokes.  If the readback doesn't
-    match we type the value out instead.
+    match we type the value out instead.  Either way we finish by dispatching
+    ``input``/``change`` events so JS-gated submit buttons enable.
     """
     locator = page.locator(selector).first
     try:
@@ -170,23 +213,32 @@ def fill_field(page: Page, selector: str, value: str) -> bool:
         LOG.debug("fill(%r) failed: %s", selector, exc)
 
     try:
-        if locator.input_value(timeout=2_000) == value:
-            return True
+        if locator.input_value(timeout=2_000) != value:
+            LOG.debug("fill(%r) did not stick; typing instead", selector)
+            try:
+                locator.fill("")
+                locator.press_sequentially(value, delay=15, timeout=20_000)
+            except Exception as exc:
+                LOG.debug("typing into %r failed: %s", selector, exc)
+                return False
+            try:
+                if locator.input_value(timeout=2_000) != value:
+                    return False
+            except Exception:
+                pass  # not an <input> we can read back; assume it worked
     except Exception:
-        return True  # not an <input> we can read back; assume fill worked
+        pass  # not an <input> we can read back; assume fill worked
 
-    LOG.debug("fill(%r) did not stick; typing instead", selector)
     try:
-        locator.fill("")
-        locator.press_sequentially(value, delay=15, timeout=20_000)
-        return locator.input_value(timeout=2_000) == value
+        locator.dispatch_event("input")
+        locator.dispatch_event("change")
     except Exception as exc:
-        LOG.debug("typing into %r failed: %s", selector, exc)
-        return False
+        LOG.debug("dispatch events on %r failed (non-fatal): %s", selector, exc)
+    return True
 
 
 def do_submit(page: Page, settings: Settings) -> bool:
-    """Portal's own submit hook -> CSS selectors -> Enter key."""
+    """Portal's own submit hook -> container-aware JS click -> CSS -> form -> Enter."""
     try:
         ready = page.evaluate(
             "() => typeof oAuthentication !== 'undefined' "
@@ -196,8 +248,44 @@ def do_submit(page: Page, settings: Settings) -> bool:
             page.evaluate("() => oAuthentication.submitActiveForm()")
             LOG.info("submitted via oAuthentication.submitActiveForm()")
             return True
+        else:
+            LOG.debug("oAuthentication.submitActiveForm() not present; "
+                      "trying click fallbacks")
     except Exception as exc:
         LOG.debug("JS submit failed: %s", exc)
+
+    # The AJAX view renders its OK button inside #usercheck_ok_div /
+    # #LoginSequencePage_Content, which may not match the generic selectors
+    # below on the first pass — try a direct JS click there first.
+    try:
+        clicked = page.evaluate(
+            """() => {
+                for (const root of ['#usercheck_ok_div', '#LoginSequencePage_Content',
+                                    '#portal_main_view', 'form']) {
+                    const scope = root === 'form' ? document
+                        : document.querySelector(root);
+                    if (!scope) continue;
+                    const els = scope === document ? Array.from(document.forms)
+                        .flatMap(f => Array.from(f.elements)) : null;
+                    const candidates = els || scope.querySelectorAll(
+                        'button, input[type="submit"], input[type="button"], a');
+                    for (const el of candidates) {
+                        if (el.disabled) continue;
+                        const r = el.getBoundingClientRect
+                            ? el.getBoundingClientRect() : null;
+                        if (r && (r.width === 0 || r.height === 0)) continue;
+                        el.click();
+                        return root;
+                    }
+                }
+                return null;
+            }"""
+        )
+        if clicked:
+            LOG.info("submitted via JS click inside %r", clicked)
+            return True
+    except Exception as exc:
+        LOG.debug("JS container click failed: %s", exc)
 
     for selector in settings.submit_selectors:
         try:
@@ -208,6 +296,24 @@ def do_submit(page: Page, settings: Settings) -> bool:
                 return True
         except Exception as exc:
             LOG.debug("click on %r failed: %s", selector, exc)
+
+    # Ask the form itself to submit (works even when the button is a div/span).
+    try:
+        submitted = page.evaluate(
+            """() => {
+                const form = document.querySelector(
+                    '#LoginSequencePage_Content form, #portal_main_view form, form');
+                if (!form) return false;
+                if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                else form.submit();
+                return true;
+            }"""
+        )
+        if submitted:
+            LOG.info("submitted via form.requestSubmit()/submit()")
+            return True
+    except Exception as exc:
+        LOG.debug("form submit failed: %s", exc)
 
     password_selector = find_visible(page, settings.password_selectors)
     if password_selector:
@@ -299,7 +405,23 @@ def login_once(page: Page, settings: Settings) -> tuple[bool, str]:
     try:
         page.wait_for_load_state("networkidle", timeout=10_000)
     except PlaywrightTimeout:
-        LOG.debug("networkidle not reached; continuing")
+        LOG.debug("networkidle not reached; continuing "
+                  "(expected: the portal keeps polling via AJAX)")
+
+    # The PortalMain shell renders its Authentication view via AJAX
+    # (viewManager.gotoNextState -> GetViewData), so give the portal's own
+    # JS object a moment to appear before looking for fields.  This is only
+    # a hint — the field poll below is what actually gates progress.
+    try:
+        page.wait_for_function(
+            "() => typeof oAuthentication !== 'undefined'",
+            timeout=10_000,
+        )
+        LOG.debug("oAuthentication object present")
+    except PlaywrightTimeout:
+        LOG.debug("oAuthentication not seen after 10s; continuing anyway")
+    except PlaywrightError as exc:
+        LOG.debug("oAuthentication probe failed: %s", exc)
 
     if is_logged_in(page, settings):
         return True, "already authenticated"
@@ -310,14 +432,17 @@ def login_once(page: Page, settings: Settings) -> tuple[bool, str]:
         if is_logged_in(page, settings):
             return True, "no form, but authenticated"
         screenshot(page, settings, "no-form")
+        LOG.warning("portal state at no-form: %s", describe_page(page))
         return False, "login form did not appear"
 
     password_selector = find_visible(page, settings.password_selectors, timeout_ms=5_000)
     if not password_selector:
         screenshot(page, settings, "no-password")
+        LOG.warning("portal state at no-password: %s", describe_page(page))
         return False, "password field did not appear"
 
     LOG.info("form found (user=%r pass=%r)", user_selector, password_selector)
+    LOG.debug("portal state at form: %s", describe_page(page))
 
     if settings.rsa_timeout > 0:
         try:
@@ -363,6 +488,13 @@ def _await_result(page: Page, settings: Settings) -> tuple[bool, str]:
         if is_logged_in(page, settings):
             return True, "success markers found"
 
+        # Fail fast: the portal answered with an error instead of logging in.
+        # (Previously we waited out the whole post-submit timeout first.)
+        text = body_text(page)
+        if text and text_is_failure(text, settings.failure_markers):
+            screenshot(page, settings, "failed")
+            return False, "portal reported a failure (check credentials / account lock)"
+
         try:
             page.wait_for_timeout(500)
         except PlaywrightError:
@@ -370,11 +502,34 @@ def _await_result(page: Page, settings: Settings) -> tuple[bool, str]:
         except Exception:
             break
 
+    # One last look: the AJAX view may have swapped after our final poll.
+    if is_logged_in(page, settings):
+        return True, "success markers found"
+
+    try:
+        if page.evaluate("() => !!(window.cpRSAobj && cpRSAobj.isAuthenticated)"):
+            return True, "portal reports isAuthenticated = true"
+    except Exception:
+        pass
+
     text = body_text(page)
     if text_is_failure(text, settings.failure_markers):
         screenshot(page, settings, "failed")
         return False, "portal reported a failure (check credentials / account lock)"
 
+    # Success without markers: the form is gone and a logout control remains
+    # (e.g. the AJAX view swapped to Final with no headline text we know).
+    try:
+        has_form = any(page.locator(sel).count() > 0
+                       for sel in settings.password_selectors)
+        has_logout = any(page.locator(sel).count() > 0
+                         for sel in LOGOUT_SELECTORS)
+        if (not has_form) and has_logout:
+            return True, "login form gone and logout control present"
+    except Exception:
+        pass
+
+    LOG.warning("portal state at unclear: %s", describe_page(page))
     screenshot(page, settings, "unclear")
     return False, "login result unclear"
 

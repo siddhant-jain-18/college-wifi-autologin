@@ -76,53 +76,107 @@ CONNECTIVITY_PROBES: tuple[tuple[str, int, bytes], ...] = (
 
 # ---------------------------------------------------------------------------
 # Portal defaults — keep in one place so every tool agrees
+#
+# NOTE (2026-10-07): the PortalMain document is only an AJAX shell — it ships
+# zero <input>/<button> elements and injects the real Authentication view into
+# #LoginSequencePage_Content / #portal_main_view (submit control lands inside
+# #usercheck_ok_div).  The selectors below therefore cover (a) the historic
+# Cisco-ISE IDs, (b) the AJAX containers, and (c) generic fallbacks, so a
+# portal-side rename of one ID does not break the whole flow.  A decoded
+# snapshot lives under docs/portal-reference/.
 # ---------------------------------------------------------------------------
 USERNAME_SELECTORS: tuple[str, ...] = (
     "#LoginUserPassword_auth_username",
+    "#LoginUserPassword input[type='text']",
+    "#LoginSequencePage_Content input[type='text']",
+    "#portal_main_view input[type='text']",
     'input[name="username"]',
     'input[name="user"]',
+    'input[name*="user" i]',
     'input[id*="username" i]',
+    'input[id*="user" i]',
+    'input[placeholder*="user" i]',
+    'input[aria-label*="user" i]',
     'input[autocomplete="username"]',
     'input[type="text"]:visible',
+    'input:not([type]):visible',
 )
 
 PASSWORD_SELECTORS: tuple[str, ...] = (
     "#LoginUserPassword_auth_password",
+    "#LoginUserPassword input[type='password']",
+    "#LoginSequencePage_Content input[type='password']",
+    "#portal_main_view input[type='password']",
     'input[name="password"]',
+    'input[name*="pass" i]',
     'input[id*="password" i]',
+    'input[id*="pass" i]',
+    'input[placeholder*="pass" i]',
+    'input[aria-label*="pass" i]',
     'input[autocomplete="current-password"]',
     'input[type="password"]:visible',
 )
 
 SUBMIT_SELECTORS: tuple[str, ...] = (
+    "#usercheck_ok_div input:visible",
+    "#usercheck_ok_div button:visible",
+    "#usercheck_ok_div a:visible",
+    "#LoginSequencePage_Content input[type='submit']:visible",
+    "#LoginSequencePage_Content button:visible",
+    "#portal_main_view input[type='submit']:visible",
+    "#portal_main_view button:visible",
     'input[type="submit"]:visible',
     'button[type="submit"]:visible',
+    'input[type="button"][value*="log" i]:visible',
+    'input[type="button"][value*="sign" i]:visible',
     'a.button:has-text("Login")',
     'a.button:has-text("Log In")',
     'a.button:has-text("Sign In")',
     'button:has-text("Login")',
     'button:has-text("Log In")',
     'button:has-text("Sign In")',
+    'button:has-text("Connect")',
+    'button:has-text("Continue")',
+    'button:has-text("Submit")',
+    'a:has-text("Login")',
+    'a:has-text("Log In")',
+    'a:has-text("Sign In")',
     'input[value*="Login" i]:visible',
+    'input[value*="Sign In" i]:visible',
+    'input[value*="Connect" i]:visible',
 )
 
 SUCCESS_MARKERS: tuple[str, ...] = (
     "network access granted",
-    "welcome to the network",
+    "access granted",
     "access has been granted",
+    "welcome to the network",
     "you are now connected",
+    "you are connected",
+    "successfully connected",
     "login successful",
+    "authentication successful",
     "authentication succeeded",
+    "already authenticated",
+    "session established",
+    "you may now access",
 )
 
 FAILURE_MARKERS: tuple[str, ...] = (
     "invalid",
     "incorrect",
     "failed",
+    "failure",
     "denied",
+    "rejected",
     "locked out",
     "too many",
+    "try again",
+    "wrong username",
+    "wrong password",
     "authentication error",
+    "session expired",
+    "session timed out",
 )
 
 #: Chromium flags that are safe and useful everywhere.  ``--no-sandbox`` is
